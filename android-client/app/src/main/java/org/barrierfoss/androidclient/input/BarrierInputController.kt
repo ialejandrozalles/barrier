@@ -51,6 +51,7 @@ class BarrierInputController(private val service: AccessibilityService) {
         cursorY = cursorY.toInt(),
     )
 
+    @Suppress("UNUSED_PARAMETER")
     fun onEnter(_modifierMask: Int) {
         refreshDisplayInfo()
         entered = true
@@ -137,6 +138,7 @@ class BarrierInputController(private val service: AccessibilityService) {
         dragActive = false
     }
 
+    @Suppress("UNUSED_PARAMETER")
     fun onMouseWheel(_xDelta: Int, yDelta: Int) {
         if (!entered || yDelta == 0) {
             return
@@ -148,16 +150,19 @@ class BarrierInputController(private val service: AccessibilityService) {
         }
     }
 
+    @Suppress("UNUSED_PARAMETER")
     fun onKeyDown(keyId: Int, modifierMask: Int, _keyButton: Int) {
         executeKeyCommand(KeyMapper.mapKeyDown(keyId, modifierMask))
     }
 
+    @Suppress("UNUSED_PARAMETER")
     fun onKeyRepeat(keyId: Int, modifierMask: Int, count: Int, _keyButton: Int) {
         repeat(count.coerceAtMost(32)) {
             executeKeyCommand(KeyMapper.mapKeyDown(keyId, modifierMask))
         }
     }
 
+    @Suppress("UNUSED_PARAMETER")
     fun onKeyUp(_keyId: Int, _modifierMask: Int, _keyButton: Int) {
         // Intentionally ignored for text-oriented Android input mapping.
     }

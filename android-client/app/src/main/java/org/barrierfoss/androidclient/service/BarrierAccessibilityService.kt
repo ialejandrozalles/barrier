@@ -62,6 +62,7 @@ class BarrierAccessibilityService : AccessibilityService() {
         )
     }
 
+    @Suppress("UNUSED_PARAMETER")
     fun onEnter(x: Int, y: Int, _sequence: Int, modifierMask: Int) {
         clearPendingMoves()
         runOnMain {
