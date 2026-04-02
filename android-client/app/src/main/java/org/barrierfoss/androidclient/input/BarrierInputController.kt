@@ -245,7 +245,7 @@ class BarrierInputController(private val service: AccessibilityService) {
     }
 
     private fun dispatchScrollStep(direction: Int) {
-        val distance = (height * 0.13f).coerceIn(90f, 320f)
+        val distance = (height * 0.10f).coerceIn(70f, 240f)
         val startX = cursorX
         val startY: Float
         val endY: Float
@@ -269,12 +269,12 @@ class BarrierInputController(private val service: AccessibilityService) {
     }
 
     private companion object {
-        const val TAP_DURATION_MS = 60L
-        const val LONG_PRESS_MS = 650L
+        const val TAP_DURATION_MS = 45L
+        const val LONG_PRESS_MS = 550L
         const val MAX_GESTURE_MS = 1500L
-        const val DRAG_GESTURE_MS = 18L
-        const val SCROLL_GESTURE_MS = 120L
-        const val DRAG_MIN_INTERVAL_MS = 12L
-        const val DRAG_THRESHOLD_PX = 12f
+        const val DRAG_GESTURE_MS = 12L
+        const val SCROLL_GESTURE_MS = 90L
+        const val DRAG_MIN_INTERVAL_MS = 8L
+        const val DRAG_THRESHOLD_PX = 8f
     }
 }

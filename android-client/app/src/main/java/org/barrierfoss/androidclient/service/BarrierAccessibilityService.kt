@@ -17,8 +17,16 @@ import org.barrierfoss.androidclient.protocol.BarrierProtocolClient
  */
 class BarrierAccessibilityService : AccessibilityService() {
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val moveDispatchRunnable = Runnable { flushPendingMoves() }
+    private val moveLock = Any()
 
     private var inputController: BarrierInputController? = null
+    private var moveDispatchScheduled = false
+    private var pendingAbsoluteMove = false
+    private var pendingAbsX = 0
+    private var pendingAbsY = 0
+    private var pendingRelDx = 0
+    private var pendingRelDy = 0
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -55,6 +63,7 @@ class BarrierAccessibilityService : AccessibilityService() {
     }
 
     fun onEnter(x: Int, y: Int, sequence: Int, modifierMask: Int) {
+        clearPendingMoves()
         runOnMain {
             inputController?.onEnter(modifierMask)
             inputController?.onMouseMove(x, y)
@@ -62,21 +71,18 @@ class BarrierAccessibilityService : AccessibilityService() {
     }
 
     fun onLeave() {
+        clearPendingMoves()
         runOnMain {
             inputController?.onLeave()
         }
     }
 
     fun onMouseMove(x: Int, y: Int) {
-        runOnMain {
-            inputController?.onMouseMove(x, y)
-        }
+        enqueueMove(absoluteX = x, absoluteY = y)
     }
 
     fun onMouseRelativeMove(dx: Int, dy: Int) {
-        runOnMain {
-            inputController?.onMouseRelativeMove(dx, dy)
-        }
+        enqueueMove(relativeDx = dx, relativeDy = dy)
     }
 
     fun onMouseWheel(xDelta: Int, yDelta: Int) {
@@ -121,6 +127,74 @@ class BarrierAccessibilityService : AccessibilityService() {
         } else {
             mainHandler.post(action)
         }
+    }
+
+    private fun enqueueMove(
+        absoluteX: Int? = null,
+        absoluteY: Int? = null,
+        relativeDx: Int? = null,
+        relativeDy: Int? = null,
+    ) {
+        synchronized(moveLock) {
+            if (absoluteX != null && absoluteY != null) {
+                pendingAbsoluteMove = true
+                pendingAbsX = absoluteX
+                pendingAbsY = absoluteY
+                pendingRelDx = 0
+                pendingRelDy = 0
+            } else if (relativeDx != null && relativeDy != null) {
+                if (pendingAbsoluteMove) {
+                    pendingAbsX += relativeDx
+                    pendingAbsY += relativeDy
+                } else {
+                    pendingRelDx += relativeDx
+                    pendingRelDy += relativeDy
+                }
+            }
+
+            if (!moveDispatchScheduled) {
+                moveDispatchScheduled = true
+                mainHandler.post(moveDispatchRunnable)
+            }
+        }
+    }
+
+    private fun flushPendingMoves() {
+        val absoluteMove: Boolean
+        val absX: Int
+        val absY: Int
+        val relDx: Int
+        val relDy: Int
+
+        synchronized(moveLock) {
+            absoluteMove = pendingAbsoluteMove
+            absX = pendingAbsX
+            absY = pendingAbsY
+            relDx = pendingRelDx
+            relDy = pendingRelDy
+
+            pendingAbsoluteMove = false
+            pendingRelDx = 0
+            pendingRelDy = 0
+            moveDispatchScheduled = false
+        }
+
+        if (absoluteMove) {
+            inputController?.onMouseMove(absX, absY)
+        }
+        if (relDx != 0 || relDy != 0) {
+            inputController?.onMouseRelativeMove(relDx, relDy)
+        }
+    }
+
+    private fun clearPendingMoves() {
+        synchronized(moveLock) {
+            pendingAbsoluteMove = false
+            pendingRelDx = 0
+            pendingRelDy = 0
+            moveDispatchScheduled = false
+        }
+        mainHandler.removeCallbacks(moveDispatchRunnable)
     }
 
     companion object {
