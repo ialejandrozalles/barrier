@@ -3,7 +3,10 @@ package org.barrierfoss.androidclient.input
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
+import android.os.Build
 import android.os.SystemClock
+import android.util.DisplayMetrics
+import android.view.WindowManager
 import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.math.max
@@ -48,7 +51,7 @@ class BarrierInputController(private val service: AccessibilityService) {
         cursorY = cursorY.toInt(),
     )
 
-    fun onEnter(modifierMask: Int) {
+    fun onEnter(_modifierMask: Int) {
         refreshDisplayInfo()
         entered = true
         cursorOverlay.show()
@@ -134,7 +137,7 @@ class BarrierInputController(private val service: AccessibilityService) {
         dragActive = false
     }
 
-    fun onMouseWheel(xDelta: Int, yDelta: Int) {
+    fun onMouseWheel(_xDelta: Int, yDelta: Int) {
         if (!entered || yDelta == 0) {
             return
         }
@@ -145,17 +148,17 @@ class BarrierInputController(private val service: AccessibilityService) {
         }
     }
 
-    fun onKeyDown(keyId: Int, modifierMask: Int, keyButton: Int) {
+    fun onKeyDown(keyId: Int, modifierMask: Int, _keyButton: Int) {
         executeKeyCommand(KeyMapper.mapKeyDown(keyId, modifierMask))
     }
 
-    fun onKeyRepeat(keyId: Int, modifierMask: Int, count: Int, keyButton: Int) {
+    fun onKeyRepeat(keyId: Int, modifierMask: Int, count: Int, _keyButton: Int) {
         repeat(count.coerceAtMost(32)) {
             executeKeyCommand(KeyMapper.mapKeyDown(keyId, modifierMask))
         }
     }
 
-    fun onKeyUp(keyId: Int, modifierMask: Int, keyButton: Int) {
+    fun onKeyUp(_keyId: Int, _modifierMask: Int, _keyButton: Int) {
         // Intentionally ignored for text-oriented Android input mapping.
     }
 
@@ -179,11 +182,33 @@ class BarrierInputController(private val service: AccessibilityService) {
     }
 
     private fun refreshDisplayInfo() {
-        val dm = service.resources.displayMetrics
-        width = dm.widthPixels.coerceAtLeast(1)
-        height = dm.heightPixels.coerceAtLeast(1)
+        val (displayWidth, displayHeight) = getRealDisplaySize()
+        width = displayWidth.coerceAtLeast(1)
+        height = displayHeight.coerceAtLeast(1)
         cursorX = cursorX.coerceIn(0f, (width - 1).toFloat())
         cursorY = cursorY.coerceIn(0f, (height - 1).toFloat())
+    }
+
+    private fun getRealDisplaySize(): Pair<Int, Int> {
+        val wm = service.getSystemService(WindowManager::class.java)
+        if (wm != null) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val bounds = wm.maximumWindowMetrics.bounds
+                return bounds.width() to bounds.height()
+            }
+
+            @Suppress("DEPRECATION")
+            val display = wm.defaultDisplay
+            if (display != null) {
+                val metrics = DisplayMetrics()
+                @Suppress("DEPRECATION")
+                display.getRealMetrics(metrics)
+                return metrics.widthPixels to metrics.heightPixels
+            }
+        }
+
+        val fallback = service.resources.displayMetrics
+        return fallback.widthPixels to fallback.heightPixels
     }
 
     private fun setCursor(x: Float, y: Float) {
