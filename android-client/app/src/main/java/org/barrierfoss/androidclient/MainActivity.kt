@@ -29,6 +29,17 @@ class MainActivity : AppCompatActivity() {
         settingsRepository = SettingsRepository(this)
         loadSettings()
 
+        binding.topToolbar.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                R.id.action_shortcuts -> {
+                    startActivity(Intent(this, ShortcutSettingsActivity::class.java))
+                    true
+                }
+
+                else -> false
+            }
+        }
+
         binding.accessibilityButton.setOnClickListener {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }

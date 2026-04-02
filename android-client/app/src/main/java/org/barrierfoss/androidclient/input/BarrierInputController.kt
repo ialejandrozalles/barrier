@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.SystemClock
 import android.util.DisplayMetrics
 import android.view.WindowManager
+import org.barrierfoss.androidclient.data.ShortcutPreferences
 import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.math.max
@@ -14,6 +15,8 @@ import kotlin.math.max
 class BarrierInputController(private val service: AccessibilityService) {
     private val textInjector = TextInjector(service)
     private val cursorOverlay = CursorOverlay(service)
+    private val shortcutPreferences = ShortcutPreferences(service)
+    private var shortcutBindings = shortcutPreferences.loadAll()
 
     private var width = 1
     private var height = 1
@@ -23,7 +26,6 @@ class BarrierInputController(private val service: AccessibilityService) {
     private var cursorY = 0f
 
     private var leftButtonDown = false
-    private var pressStartTime = 0L
     private var pressStartX = 0f
     private var pressStartY = 0f
 
@@ -31,6 +33,12 @@ class BarrierInputController(private val service: AccessibilityService) {
     private var lastDragX = 0f
     private var lastDragY = 0f
     private var lastDragDispatch = 0L
+
+    private var rightButtonDown = false
+    private var rightPressX = 0f
+    private var rightPressY = 0f
+
+    private val keyButtonCommands = HashMap<Int, KeyMapper.KeyCommand>()
 
     init {
         refreshDisplayInfo()
@@ -51,9 +59,22 @@ class BarrierInputController(private val service: AccessibilityService) {
         cursorY = cursorY.toInt(),
     )
 
-    @Suppress("UNUSED_PARAMETER")
-    fun onEnter(_modifierMask: Int) {
+    fun onEnter(modifierMask: Int, sequence: Int) {
         refreshDisplayInfo()
+        shortcutBindings = shortcutPreferences.loadAll()
+
+        if (sequence != 0) {
+            leftButtonDown = false
+            rightButtonDown = false
+            dragActive = false
+            keyButtonCommands.clear()
+        }
+
+        // If shift is active when entering, keep pointer explicitly visible.
+        if ((modifierMask and KeyMapper.MOD_SHIFT) != 0) {
+            cursorOverlay.moveTo(cursorX, cursorY)
+        }
+
         entered = true
         cursorOverlay.show()
         cursorOverlay.moveTo(cursorX, cursorY)
@@ -62,7 +83,9 @@ class BarrierInputController(private val service: AccessibilityService) {
     fun onLeave() {
         entered = false
         leftButtonDown = false
+        rightButtonDown = false
         dragActive = false
+        keyButtonCommands.clear()
         cursorOverlay.hide()
     }
 
@@ -104,7 +127,6 @@ class BarrierInputController(private val service: AccessibilityService) {
         when (buttonId) {
             1 -> {
                 leftButtonDown = true
-                pressStartTime = SystemClock.uptimeMillis()
                 pressStartX = cursorX
                 pressStartY = cursorY
                 lastDragX = cursorX
@@ -112,8 +134,16 @@ class BarrierInputController(private val service: AccessibilityService) {
                 dragActive = false
             }
 
-            3 -> dispatchTap(cursorX, cursorY, LONG_PRESS_MS)
-            2 -> dispatchTap(cursorX, cursorY, TAP_DURATION_MS)
+            2 -> performSystemAction(AccessibilityService.GLOBAL_ACTION_HOME)
+
+            3 -> {
+                rightButtonDown = true
+                rightPressX = cursorX
+                rightPressY = cursorY
+            }
+
+            4 -> performSystemAction(AccessibilityService.GLOBAL_ACTION_BACK)
+            5 -> performSystemAction(AccessibilityService.GLOBAL_ACTION_RECENTS)
         }
     }
 
@@ -122,49 +152,85 @@ class BarrierInputController(private val service: AccessibilityService) {
             return
         }
 
-        if (buttonId != 1 || !leftButtonDown) {
+        if (buttonId == 1) {
+            if (!leftButtonDown) {
+                return
+            }
+
+            if (!dragActive) {
+                // Keep left click deterministic as a regular tap.
+                dispatchTap(cursorX, cursorY, TAP_DURATION_MS)
+            }
+
+            leftButtonDown = false
+            dragActive = false
             return
         }
 
-        val duration = (SystemClock.uptimeMillis() - pressStartTime)
-            .coerceAtLeast(TAP_DURATION_MS)
-            .coerceAtMost(MAX_GESTURE_MS)
+        if (buttonId == 3) {
+            if (!rightButtonDown) {
+                return
+            }
 
-        if (!dragActive) {
-            dispatchTap(cursorX, cursorY, duration)
+            rightButtonDown = false
+            val distance = hypot(
+                (cursorX - rightPressX).toDouble(),
+                (cursorY - rightPressY).toDouble(),
+            )
+
+            if (distance <= RIGHT_CLICK_SLOP_PX) {
+                // Right click triggers context action via long press.
+                dispatchTap(cursorX, cursorY, LONG_PRESS_MS)
+            }
         }
-
-        leftButtonDown = false
-        dragActive = false
     }
 
-    @Suppress("UNUSED_PARAMETER")
-    fun onMouseWheel(_xDelta: Int, yDelta: Int) {
-        if (!entered || yDelta == 0) {
+    fun onMouseWheel(xDelta: Int, yDelta: Int) {
+        if (!entered) {
             return
         }
 
-        val ticks = max(1, abs(yDelta) / 120).coerceAtMost(8)
-        repeat(ticks) {
-            dispatchScrollStep(if (yDelta > 0) 1 else -1)
+        if (xDelta != 0) {
+            val xTicks = max(1, abs(xDelta) / 120).coerceAtMost(8)
+            repeat(xTicks) {
+                dispatchHorizontalScrollStep(if (xDelta > 0) 1 else -1)
+            }
+        }
+
+        if (yDelta != 0) {
+            val yTicks = max(1, abs(yDelta) / 120).coerceAtMost(8)
+            repeat(yTicks) {
+                dispatchScrollStep(if (yDelta > 0) 1 else -1)
+            }
         }
     }
 
-    @Suppress("UNUSED_PARAMETER")
-    fun onKeyDown(keyId: Int, modifierMask: Int, _keyButton: Int) {
-        executeKeyCommand(KeyMapper.mapKeyDown(keyId, modifierMask))
+    fun onKeyDown(keyId: Int, modifierMask: Int, keyButton: Int) {
+        val command = KeyMapper.mapKeyDown(keyId, modifierMask, shortcutBindings)
+        if (keyButton > 0) {
+            keyButtonCommands[keyButton] = command
+        }
+        executeKeyCommand(command)
     }
 
-    @Suppress("UNUSED_PARAMETER")
-    fun onKeyRepeat(keyId: Int, modifierMask: Int, count: Int, _keyButton: Int) {
+    fun onKeyRepeat(keyId: Int, modifierMask: Int, count: Int, keyButton: Int) {
+        val command =
+            if (keyButton > 0) {
+                keyButtonCommands[keyButton] ?: KeyMapper.mapKeyDown(keyId, modifierMask, shortcutBindings)
+            } else {
+                KeyMapper.mapKeyDown(keyId, modifierMask, shortcutBindings)
+            }
+
         repeat(count.coerceAtMost(32)) {
-            executeKeyCommand(KeyMapper.mapKeyDown(keyId, modifierMask))
+            executeKeyCommand(command)
         }
     }
 
     @Suppress("UNUSED_PARAMETER")
-    fun onKeyUp(_keyId: Int, _modifierMask: Int, _keyButton: Int) {
-        // Intentionally ignored for text-oriented Android input mapping.
+    fun onKeyUp(keyId: Int, modifierMask: Int, keyButton: Int) {
+        if (keyButton > 0) {
+            keyButtonCommands.remove(keyButton)
+        }
     }
 
     private fun executeKeyCommand(command: KeyMapper.KeyCommand) {
@@ -174,9 +240,41 @@ class BarrierInputController(private val service: AccessibilityService) {
             KeyMapper.KeyCommand.Enter -> textInjector.commitText("\n")
             KeyMapper.KeyCommand.Tab -> textInjector.commitText("\t")
             is KeyMapper.KeyCommand.MoveCursor -> textInjector.moveCursor(command.delta)
-            KeyMapper.KeyCommand.Home -> textInjector.moveToStart()
-            KeyMapper.KeyCommand.End -> textInjector.moveToEnd()
-            KeyMapper.KeyCommand.NavigateBack -> service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+            KeyMapper.KeyCommand.Home -> {
+                if (!textInjector.moveToStart()) {
+                    performSystemAction(AccessibilityService.GLOBAL_ACTION_HOME)
+                }
+            }
+            KeyMapper.KeyCommand.End -> {
+                if (!textInjector.moveToEnd()) {
+                    performSystemAction(AccessibilityService.GLOBAL_ACTION_RECENTS)
+                }
+            }
+            KeyMapper.KeyCommand.NavigateBack ->
+                performSystemAction(AccessibilityService.GLOBAL_ACTION_BACK)
+            KeyMapper.KeyCommand.NavigateHome ->
+                performSystemAction(AccessibilityService.GLOBAL_ACTION_HOME)
+            KeyMapper.KeyCommand.ShowRecents ->
+                performSystemAction(AccessibilityService.GLOBAL_ACTION_RECENTS)
+            KeyMapper.KeyCommand.ShowNotifications ->
+                performSystemAction(AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS)
+            KeyMapper.KeyCommand.ShowQuickSettings ->
+                performSystemAction(AccessibilityService.GLOBAL_ACTION_QUICK_SETTINGS)
+            KeyMapper.KeyCommand.ShowPowerDialog -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    performSystemAction(AccessibilityService.GLOBAL_ACTION_POWER_DIALOG)
+                }
+            }
+            KeyMapper.KeyCommand.LockScreen -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    performSystemAction(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN)
+                }
+            }
+            KeyMapper.KeyCommand.TakeScreenshot -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    performSystemAction(AccessibilityService.GLOBAL_ACTION_TAKE_SCREENSHOT)
+                }
+            }
             KeyMapper.KeyCommand.Copy -> textInjector.copy()
             KeyMapper.KeyCommand.Paste -> textInjector.paste()
             KeyMapper.KeyCommand.Cut -> textInjector.cut()
@@ -298,6 +396,34 @@ class BarrierInputController(private val service: AccessibilityService) {
         service.dispatchGesture(gesture, null, null)
     }
 
+    private fun dispatchHorizontalScrollStep(direction: Int) {
+        val distance = (width * 0.10f).coerceIn(70f, 240f)
+        val startY = cursorY
+        val startX: Float
+        val endX: Float
+
+        if (direction >= 0) {
+            startX = (cursorX + distance / 2f).coerceIn(0f, (width - 1).toFloat())
+            endX = (cursorX - distance / 2f).coerceIn(0f, (width - 1).toFloat())
+        } else {
+            startX = (cursorX - distance / 2f).coerceIn(0f, (width - 1).toFloat())
+            endX = (cursorX + distance / 2f).coerceIn(0f, (width - 1).toFloat())
+        }
+
+        val path = Path().apply {
+            moveTo(startX, startY)
+            lineTo(endX, startY)
+        }
+
+        val stroke = GestureDescription.StrokeDescription(path, 0, SCROLL_GESTURE_MS)
+        val gesture = GestureDescription.Builder().addStroke(stroke).build()
+        service.dispatchGesture(gesture, null, null)
+    }
+
+    private fun performSystemAction(action: Int) {
+        service.performGlobalAction(action)
+    }
+
     private companion object {
         const val TAP_DURATION_MS = 45L
         const val LONG_PRESS_MS = 550L
@@ -306,5 +432,6 @@ class BarrierInputController(private val service: AccessibilityService) {
         const val SCROLL_GESTURE_MS = 90L
         const val DRAG_MIN_INTERVAL_MS = 8L
         const val DRAG_THRESHOLD_PX = 8f
+        const val RIGHT_CLICK_SLOP_PX = 14f
     }
 }
