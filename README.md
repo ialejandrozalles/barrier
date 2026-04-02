@@ -61,6 +61,12 @@ You should now be able to move the mouse between all the screens as if they were
 
 Note that if the keyboard's Scroll Lock is active then this will prevent the mouse from switching screens.
 
+### Android client (module)
+
+This repository includes an Android client module in `android-client/` that connects to Barrier servers over LAN as a standard Barrier client (no mirroring, no remote desktop).
+
+Build and usage instructions are documented in `doc/android-client.md`.
+
 ### Contact & support
 
 Please be aware that the *only* way to draw our attention to a bug is to create a new issue in [the issue tracker](https://github.com/debauchee/barrier/issues). Write a clear, concise, detailed report and you will get a clear, concise, detailed response. Priority is always given to issues that affect a wider range of users.

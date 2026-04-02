@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Barrier Android Client</string>
+    <string name="accessibility_service_label">Barrier Android Control Service</string>
+    <string name="accessibility_service_description">Inyecta eventos de toque y teclado recibidos desde un servidor Barrier en la red local.</string>
+    <string name="notification_channel_name">Barrier Android Client</string>
+    <string name="notification_idle">Barrier Android client listo</string>
+    <string name="notification_connecting">Conectando al servidor Barrier…</string>
+    <string name="notification_connected">Conectado al servidor Barrier</string>
+    <string name="notification_disconnected">Desconectado, reintentando…</string>
+    <string name="btn_start">Iniciar cliente</string>
+    <string name="btn_stop">Detener cliente</string>
+    <string name="btn_accessibility">Abrir ajustes de Accesibilidad</string>
+    <string name="btn_overlay">Conceder permiso de superposición</string>
+    <string name="hint_server_host">Servidor Barrier (IP o host)</string>
+    <string name="hint_server_port">Puerto (24800)</string>
+    <string name="hint_screen_name">Nombre de pantalla (debe coincidir con Barrier GUI)</string>
+    <string name="screen_title">Barrier Android Client</string>
+    <string name="screen_subtitle">Controla Android como cliente real de Barrier (sin mirroring).</string>
+    <string name="credit_line">Módulo Android desarrollado por Izai Alejandro Zalles Merino (zallesrene@gmail.com)</string>
+    <string name="status_accessibility_on">Servicio de accesibilidad: habilitado</string>
+    <string name="status_accessibility_off">Servicio de accesibilidad: deshabilitado</string>
+    <string name="status_overlay_on">Permiso de superposición: habilitado</string>
+    <string name="status_overlay_off">Permiso de superposición: deshabilitado</string>
+</resources>
