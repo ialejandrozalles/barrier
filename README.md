@@ -65,8 +65,6 @@ Note that if the keyboard's Scroll Lock is active then this will prevent the mou
 
 This repository includes an Android client module in `android-client/` that connects to Barrier servers over LAN as a standard Barrier client (no mirroring, no remote desktop).
 
-The Android app includes an in-app **Atajos** options menu to customize key combinations for global Android actions (Back, Home, Recents, notifications, and more).
-
 Build and usage instructions are documented in `doc/android-client.md`.
 
 ### Contact & support

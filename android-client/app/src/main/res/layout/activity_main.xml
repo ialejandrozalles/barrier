@@ -1,124 +1,115 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/bg"
-    android:orientation="vertical">
+    android:background="@color/bg">
 
-    <com.google.android.material.appbar.MaterialToolbar
-        android:id="@+id/topToolbar"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:backgroundTint="@color/surface"
-        android:elevation="3dp"
-        android:title="@string/screen_title"
-        android:titleTextColor="@color/text_primary"
-        app:menu="@menu/main_options_menu" />
+        android:orientation="vertical"
+        android:padding="20dp">
 
-    <ScrollView
-        android:layout_width="match_parent"
-        android:layout_height="match_parent">
-
-        <LinearLayout
+        <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:padding="20dp">
+            android:text="@string/screen_title"
+            android:textColor="@color/text_primary"
+            android:textSize="26sp"
+            android:textStyle="bold" />
 
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/screen_subtitle"
-                android:textColor="@color/text_primary"
-                android:textSize="15sp" />
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/screen_subtitle"
+            android:textColor="@color/text_primary"
+            android:textSize="15sp" />
 
-            <EditText
-                android:id="@+id/serverHostInput"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="18dp"
-                android:backgroundTint="@color/accent"
-                android:hint="@string/hint_server_host"
-                android:inputType="textUri"
-                android:singleLine="true" />
+        <EditText
+            android:id="@+id/serverHostInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:backgroundTint="@color/accent"
+            android:hint="@string/hint_server_host"
+            android:inputType="textUri"
+            android:singleLine="true" />
 
-            <EditText
-                android:id="@+id/serverPortInput"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:backgroundTint="@color/accent"
-                android:hint="@string/hint_server_port"
-                android:inputType="number"
-                android:singleLine="true" />
+        <EditText
+            android:id="@+id/serverPortInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:backgroundTint="@color/accent"
+            android:hint="@string/hint_server_port"
+            android:inputType="number"
+            android:singleLine="true" />
 
-            <EditText
-                android:id="@+id/screenNameInput"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:backgroundTint="@color/accent"
-                android:hint="@string/hint_screen_name"
-                android:inputType="textNoSuggestions"
-                android:singleLine="true" />
+        <EditText
+            android:id="@+id/screenNameInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:backgroundTint="@color/accent"
+            android:hint="@string/hint_screen_name"
+            android:inputType="textNoSuggestions"
+            android:singleLine="true" />
 
-            <Button
-                android:id="@+id/accessibilityButton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="18dp"
-                android:text="@string/btn_accessibility" />
+        <Button
+            android:id="@+id/accessibilityButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="@string/btn_accessibility" />
 
-            <Button
-                android:id="@+id/overlayButton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="@string/btn_overlay" />
+        <Button
+            android:id="@+id/overlayButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/btn_overlay" />
 
-            <Button
-                android:id="@+id/startButton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:backgroundTint="@color/accent"
-                android:text="@string/btn_start"
-                android:textColor="@android:color/white" />
+        <Button
+            android:id="@+id/startButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:backgroundTint="@color/accent"
+            android:text="@string/btn_start"
+            android:textColor="@android:color/white" />
 
-            <Button
-                android:id="@+id/stopButton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="@string/btn_stop" />
+        <Button
+            android:id="@+id/stopButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/btn_stop" />
 
-            <TextView
-                android:id="@+id/accessibilityStatus"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="18dp"
-                android:textColor="@color/text_primary"
-                android:textSize="14sp" />
+        <TextView
+            android:id="@+id/accessibilityStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:textColor="@color/text_primary"
+            android:textSize="14sp" />
 
-            <TextView
-                android:id="@+id/overlayStatus"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:textColor="@color/text_primary"
-                android:textSize="14sp" />
+        <TextView
+            android:id="@+id/overlayStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:textColor="@color/text_primary"
+            android:textSize="14sp" />
 
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="20dp"
-                android:text="@string/credit_line"
-                android:textColor="@color/text_primary"
-                android:textSize="13sp"
-                android:textStyle="italic" />
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="@string/credit_line"
+            android:textColor="@color/text_primary"
+            android:textSize="13sp"
+            android:textStyle="italic" />
 
-        </LinearLayout>
-    </ScrollView>
-
-</LinearLayout>
+    </LinearLayout>
+</ScrollView>

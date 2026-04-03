@@ -23,10 +23,6 @@
             </intent-filter>
         </activity>
 
-        <activity
-            android:name=".ShortcutSettingsActivity"
-            android:exported="false" />
-
         <service
             android:name=".service.BarrierConnectionService"
             android:enabled="true"

@@ -1,19 +1,19 @@
 package org.barrierfoss.androidclient.input
 
 object KeyMapper {
-    const val MOD_SHIFT = ShortcutModifiers.SHIFT
-    const val MOD_CONTROL = ShortcutModifiers.CONTROL
-    const val MOD_ALT = ShortcutModifiers.ALT
-    const val MOD_META = ShortcutModifiers.META
-    const val MOD_SUPER = ShortcutModifiers.SUPER
+    const val MOD_SHIFT = 0x0001
+    const val MOD_CONTROL = 0x0002
 
     private const val KEY_BACKSPACE = 0xEF08
     private const val KEY_TAB = 0xEF09
     private const val KEY_RETURN = 0xEF0D
+    private const val KEY_ESCAPE = 0xEF1B
     private const val KEY_DELETE = 0xEFFF
 
     private const val KEY_LEFT = 0xEF51
+    private const val KEY_UP = 0xEF52
     private const val KEY_RIGHT = 0xEF53
+    private const val KEY_DOWN = 0xEF54
     private const val KEY_PAGE_UP = 0xEF55
     private const val KEY_PAGE_DOWN = 0xEF56
     private const val KEY_HOME = 0xEF50
@@ -35,13 +35,6 @@ object KeyMapper {
         data object Home : KeyCommand
         data object End : KeyCommand
         data object NavigateBack : KeyCommand
-        data object NavigateHome : KeyCommand
-        data object ShowRecents : KeyCommand
-        data object ShowNotifications : KeyCommand
-        data object ShowQuickSettings : KeyCommand
-        data object ShowPowerDialog : KeyCommand
-        data object LockScreen : KeyCommand
-        data object TakeScreenshot : KeyCommand
         data object Copy : KeyCommand
         data object Paste : KeyCommand
         data object Cut : KeyCommand
@@ -49,16 +42,7 @@ object KeyMapper {
         data object None : KeyCommand
     }
 
-    fun mapKeyDown(
-        keyId: Int,
-        modifierMask: Int,
-        shortcuts: Map<ShortcutAction, ShortcutBinding>,
-    ): KeyCommand {
-        val matchedAction = matchShortcutAction(keyId, modifierMask, shortcuts)
-        if (matchedAction != null) {
-            return actionToCommand(matchedAction)
-        }
-
+    fun mapKeyDown(keyId: Int, modifierMask: Int): KeyCommand {
         val ctrl = modifierMask and MOD_CONTROL != 0
 
         val printable = toPrintableChar(keyId, modifierMask)
@@ -69,10 +53,6 @@ object KeyMapper {
                     'v' -> KeyCommand.Paste
                     'x' -> KeyCommand.Cut
                     'a' -> KeyCommand.SelectAll
-                    'h' -> KeyCommand.NavigateHome
-                    'r' -> KeyCommand.ShowRecents
-                    'n' -> KeyCommand.ShowNotifications
-                    'q' -> KeyCommand.ShowQuickSettings
                     else -> KeyCommand.None
                 }
             }
@@ -83,39 +63,16 @@ object KeyMapper {
             KEY_BACKSPACE, KEY_DELETE -> KeyCommand.Backspace
             KEY_TAB -> KeyCommand.Tab
             KEY_RETURN, KEY_KP_ENTER -> KeyCommand.Enter
+            KEY_ESCAPE -> KeyCommand.NavigateBack
             KEY_LEFT -> KeyCommand.MoveCursor(-1)
             KEY_RIGHT -> KeyCommand.MoveCursor(1)
+            KEY_UP -> KeyCommand.MoveCursor(-1)
+            KEY_DOWN -> KeyCommand.MoveCursor(1)
             KEY_HOME -> KeyCommand.Home
             KEY_END -> KeyCommand.End
             KEY_PAGE_UP -> KeyCommand.ScrollByPage(-1)
             KEY_PAGE_DOWN -> KeyCommand.ScrollByPage(1)
             else -> KeyCommand.None
-        }
-    }
-
-    private fun matchShortcutAction(
-        keyId: Int,
-        modifierMask: Int,
-        shortcuts: Map<ShortcutAction, ShortcutBinding>,
-    ): ShortcutAction? {
-        for ((action, binding) in shortcuts) {
-            if (binding.matches(keyId, modifierMask)) {
-                return action
-            }
-        }
-        return null
-    }
-
-    private fun actionToCommand(action: ShortcutAction): KeyCommand {
-        return when (action) {
-            ShortcutAction.BACK -> KeyCommand.NavigateBack
-            ShortcutAction.HOME -> KeyCommand.NavigateHome
-            ShortcutAction.RECENTS -> KeyCommand.ShowRecents
-            ShortcutAction.NOTIFICATIONS -> KeyCommand.ShowNotifications
-            ShortcutAction.QUICK_SETTINGS -> KeyCommand.ShowQuickSettings
-            ShortcutAction.POWER_DIALOG -> KeyCommand.ShowPowerDialog
-            ShortcutAction.LOCK_SCREEN -> KeyCommand.LockScreen
-            ShortcutAction.SCREENSHOT -> KeyCommand.TakeScreenshot
         }
     }
 

@@ -62,10 +62,11 @@ class BarrierAccessibilityService : AccessibilityService() {
         )
     }
 
-    fun onEnter(x: Int, y: Int, sequence: Int, modifierMask: Int) {
+    @Suppress("UNUSED_PARAMETER")
+    fun onEnter(x: Int, y: Int, _sequence: Int, modifierMask: Int) {
         clearPendingMoves()
         runOnMain {
-            inputController?.onEnter(modifierMask, sequence)
+            inputController?.onEnter(modifierMask)
             inputController?.onMouseMove(x, y)
         }
     }
