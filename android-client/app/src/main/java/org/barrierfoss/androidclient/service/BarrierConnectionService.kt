@@ -19,9 +19,13 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.barrierfoss.androidclient.MainActivity
 import org.barrierfoss.androidclient.R
+import org.barrierfoss.androidclient.data.ConnectionConfig
 import org.barrierfoss.androidclient.data.SettingsRepository
 import org.barrierfoss.androidclient.protocol.BarrierProtocolClient
+import org.barrierfoss.androidclient.usb.UsbTransport
 import java.io.IOException
+import java.net.ConnectException
+import java.net.SocketTimeoutException
 
 /*
  * Módulo Android desarrollado por Izai Alejandro Zalles Merino (zallesrene@gmail.com)
@@ -85,91 +89,114 @@ class BarrierConnectionService : Service() {
                     continue
                 }
 
-                val protocol = BarrierProtocolClient(
-                    config = config,
-                    listener = object : BarrierProtocolClient.Listener {
-                        override fun onConnecting() {
-                            updateNotification(getString(R.string.notification_connecting))
-                        }
+                val targets = buildConnectionTargets(config)
+                for (targetIndex in targets.indices) {
+                    val target = targets[targetIndex]
+                    val isLast = targetIndex == targets.lastIndex
+                    var connected = false
 
-                        override fun onConnected() {
-                            updateNotification(getString(R.string.notification_connected))
-                        }
-
-                        override fun onDisconnected(reason: String?) {
-                            val suffix = if (reason.isNullOrBlank()) "" else " ($reason)"
-                            updateNotification(getString(R.string.notification_disconnected) + suffix)
-                        }
-
-                        override fun onEnter(x: Int, y: Int, sequence: Int, modifierMask: Int) {
-                            BarrierAccessibilityService.instance()?.onEnter(x, y, sequence, modifierMask)
-                        }
-
-                        override fun onLeave() {
-                            BarrierAccessibilityService.instance()?.onLeave()
-                        }
-
-                        override fun onMouseMove(x: Int, y: Int) {
-                            BarrierAccessibilityService.instance()?.onMouseMove(x, y)
-                        }
-
-                        override fun onMouseRelativeMove(dx: Int, dy: Int) {
-                            BarrierAccessibilityService.instance()?.onMouseRelativeMove(dx, dy)
-                        }
-
-                        override fun onMouseWheel(xDelta: Int, yDelta: Int) {
-                            BarrierAccessibilityService.instance()?.onMouseWheel(xDelta, yDelta)
-                        }
-
-                        override fun onMouseDown(buttonId: Int) {
-                            BarrierAccessibilityService.instance()?.onMouseDown(buttonId)
-                        }
-
-                        override fun onMouseUp(buttonId: Int) {
-                            BarrierAccessibilityService.instance()?.onMouseUp(buttonId)
-                        }
-
-                        override fun onKeyDown(keyId: Int, modifierMask: Int, keyButton: Int) {
-                            BarrierAccessibilityService.instance()
-                                ?.onKeyDown(keyId, modifierMask, keyButton)
-                        }
-
-                        override fun onKeyUp(keyId: Int, modifierMask: Int, keyButton: Int) {
-                            BarrierAccessibilityService.instance()
-                                ?.onKeyUp(keyId, modifierMask, keyButton)
-                        }
-
-                        override fun onKeyRepeat(
-                            keyId: Int,
-                            modifierMask: Int,
-                            count: Int,
-                            keyButton: Int,
-                        ) {
-                            BarrierAccessibilityService.instance()
-                                ?.onKeyRepeat(keyId, modifierMask, count, keyButton)
-                        }
-
-                        override fun currentClientInfo(): BarrierProtocolClient.ClientInfo {
-                            return BarrierAccessibilityService.instance()?.currentClientInfo()
-                                ?: BarrierProtocolClient.ClientInfo(
-                                    x = 0,
-                                    y = 0,
-                                    width = 1080,
-                                    height = 1920,
-                                    cursorX = 540,
-                                    cursorY = 960,
+                    val protocol = BarrierProtocolClient(
+                        config = target.config,
+                        listener = object : BarrierProtocolClient.Listener {
+                            override fun onConnecting() {
+                                updateNotification(
+                                    "${getString(R.string.notification_connecting)} [${target.label}]",
                                 )
-                        }
-                    },
-                    shouldContinue = { running && isActive },
-                )
+                            }
 
-                try {
-                    protocol.runSession()
-                } catch (e: IOException) {
-                    updateNotification("${getString(R.string.notification_disconnected)} (${e.message})")
-                } catch (e: Exception) {
-                    updateNotification("Error inesperado: ${e.message}")
+                            override fun onConnected() {
+                                connected = true
+                                updateNotification(
+                                    "${getString(R.string.notification_connected)} [${target.label}]",
+                                )
+                            }
+
+                            override fun onDisconnected(reason: String?) {
+                                if (!connected && !isLast) {
+                                    return
+                                }
+                                val suffix = if (reason.isNullOrBlank()) "" else " ($reason)"
+                                updateNotification(
+                                    "${getString(R.string.notification_disconnected)}$suffix",
+                                )
+                            }
+
+                            override fun onEnter(x: Int, y: Int, sequence: Int, modifierMask: Int) {
+                                BarrierAccessibilityService.instance()?.onEnter(x, y, sequence, modifierMask)
+                            }
+
+                            override fun onLeave() {
+                                BarrierAccessibilityService.instance()?.onLeave()
+                            }
+
+                            override fun onMouseMove(x: Int, y: Int) {
+                                BarrierAccessibilityService.instance()?.onMouseMove(x, y)
+                            }
+
+                            override fun onMouseRelativeMove(dx: Int, dy: Int) {
+                                BarrierAccessibilityService.instance()?.onMouseRelativeMove(dx, dy)
+                            }
+
+                            override fun onMouseWheel(xDelta: Int, yDelta: Int) {
+                                BarrierAccessibilityService.instance()?.onMouseWheel(xDelta, yDelta)
+                            }
+
+                            override fun onMouseDown(buttonId: Int) {
+                                BarrierAccessibilityService.instance()?.onMouseDown(buttonId)
+                            }
+
+                            override fun onMouseUp(buttonId: Int) {
+                                BarrierAccessibilityService.instance()?.onMouseUp(buttonId)
+                            }
+
+                            override fun onKeyDown(keyId: Int, modifierMask: Int, keyButton: Int) {
+                                BarrierAccessibilityService.instance()
+                                    ?.onKeyDown(keyId, modifierMask, keyButton)
+                            }
+
+                            override fun onKeyUp(keyId: Int, modifierMask: Int, keyButton: Int) {
+                                BarrierAccessibilityService.instance()
+                                    ?.onKeyUp(keyId, modifierMask, keyButton)
+                            }
+
+                            override fun onKeyRepeat(
+                                keyId: Int,
+                                modifierMask: Int,
+                                count: Int,
+                                keyButton: Int,
+                            ) {
+                                BarrierAccessibilityService.instance()
+                                    ?.onKeyRepeat(keyId, modifierMask, count, keyButton)
+                            }
+
+                            override fun currentClientInfo(): BarrierProtocolClient.ClientInfo {
+                                return BarrierAccessibilityService.instance()?.currentClientInfo()
+                                    ?: BarrierProtocolClient.ClientInfo(
+                                        x = 0,
+                                        y = 0,
+                                        width = 1080,
+                                        height = 1920,
+                                        cursorX = 540,
+                                        cursorY = 960,
+                                    )
+                            }
+                        },
+                        shouldContinue = { running && isActive },
+                    )
+
+                    try {
+                        protocol.runSession()
+                        break
+                    } catch (e: IOException) {
+                        val shouldTryNext = !connected && !isLast && shouldTryNextEndpoint(e)
+                        if (shouldTryNext) {
+                            continue
+                        }
+                    } catch (e: Exception) {
+                        updateNotification("Error inesperado: ${e.message}")
+                    }
+
+                    break
                 }
 
                 if (!isActive || !running) {
@@ -229,6 +256,37 @@ class BarrierConnectionService : Service() {
         )
         manager.createNotificationChannel(channel)
     }
+
+    private fun buildConnectionTargets(config: ConnectionConfig): List<ConnectionTarget> {
+        val targets = ArrayList<ConnectionTarget>(2)
+        val usbConnected = UsbTransport.isUsbConnected(this)
+        val normalizedHost = config.serverHost.trim()
+
+        if (usbConnected) {
+            targets += ConnectionTarget(
+                config = config.copy(serverHost = UsbTransport.USB_HOST),
+                label = "USB",
+            )
+        }
+
+        if (!usbConnected || normalizedHost != UsbTransport.USB_HOST) {
+            targets += ConnectionTarget(
+                config = config,
+                label = "LAN",
+            )
+        }
+
+        return targets
+    }
+
+    private fun shouldTryNextEndpoint(error: IOException): Boolean {
+        return error is ConnectException || error is SocketTimeoutException
+    }
+
+    private data class ConnectionTarget(
+        val config: ConnectionConfig,
+        val label: String,
+    )
 
     companion object {
         const val ACTION_START = "org.barrierfoss.androidclient.action.START"

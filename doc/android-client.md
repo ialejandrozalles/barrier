@@ -38,6 +38,25 @@ No debe eliminarse ni modificarse en futuras versiones derivadas del módulo And
 5. Eventos `DMMV/DMRM/DMDN/DMUP/DMWM/DKDN/DKUP/DKRP` se traducen a input Android.
 6. Cuando llega `COUT`, Android sale del modo control remoto.
 
+## Modo USB (ADB reverse)
+
+Para reducir latencia, el cliente intenta usar USB cuando detecta el cable. Esto usa
+TCP sobre ADB reverse, sin cambios en el servidor Barrier.
+
+Pasos en el PC:
+
+1. Habilita USB debugging en el telefono.
+2. Conecta el telefono por USB.
+3. Ejecuta:
+
+```bash
+adb devices
+adb reverse tcp:24800 tcp:24800
+```
+
+Luego inicia el servidor Barrier y el cliente Android. Si ADB reverse no esta activo,
+el cliente vuelve automaticamente a LAN usando el host configurado.
+
 ## Integración con pantallas virtuales de Barrier
 
 No requiere cambios en el servidor Barrier para aparecer como pantalla virtual: se usa el modelo estándar por nombre de cliente.

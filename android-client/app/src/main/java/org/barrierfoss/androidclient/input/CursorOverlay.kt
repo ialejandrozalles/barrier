@@ -14,12 +14,12 @@ import kotlin.math.max
 class CursorOverlay(service: AccessibilityService) {
     private val context: Context = service
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-    private val cursorView = CursorView(context)
-    private val sizePx = (24 * context.resources.displayMetrics.density).toInt().coerceAtLeast(16)
+    private val cursorSizePx = (24 * context.resources.displayMetrics.density).toInt().coerceAtLeast(16)
+    private val cursorView = CursorView(context, cursorSizePx)
 
     private val params = WindowManager.LayoutParams(
-        sizePx,
-        sizePx,
+        WindowManager.LayoutParams.MATCH_PARENT,
+        WindowManager.LayoutParams.MATCH_PARENT,
         WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
             WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
@@ -27,8 +27,6 @@ class CursorOverlay(service: AccessibilityService) {
         PixelFormat.TRANSLUCENT,
     ).apply {
         gravity = Gravity.TOP or Gravity.START
-        x = 0
-        y = 0
     }
 
     private var attached = false
@@ -67,16 +65,10 @@ class CursorOverlay(service: AccessibilityService) {
             return
         }
 
-        params.x = max(0, x.toInt() - sizePx / 2)
-        params.y = max(0, y.toInt() - sizePx / 2)
-        try {
-            windowManager.updateViewLayout(cursorView, params)
-        } catch (_: Exception) {
-            // Ignore layout update errors.
-        }
+        cursorView.setCursorPosition(x, y)
     }
 
-    private class CursorView(context: Context) : View(context) {
+    private class CursorView(context: Context, private val cursorSizePx: Int) : View(context) {
         private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.argb(225, 12, 100, 123)
             style = Paint.Style.FILL
@@ -88,12 +80,21 @@ class CursorOverlay(service: AccessibilityService) {
             strokeWidth = context.resources.displayMetrics.density * 1.8f
         }
 
+        private var cursorX = 0f
+        private var cursorY = 0f
+
+        fun setCursorPosition(x: Float, y: Float) {
+            cursorX = x
+            cursorY = y
+            postInvalidateOnAnimation()
+        }
+
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
 
-            val cx = width * 0.5f
-            val cy = height * 0.5f
-            val radius = width.coerceAtMost(height) * 0.35f
+            val radius = cursorSizePx * 0.35f
+            val cx = cursorX.coerceIn(radius, max(radius, width - radius))
+            val cy = cursorY.coerceIn(radius, max(radius, height - radius))
 
             canvas.drawCircle(cx, cy, radius, fillPaint)
             canvas.drawCircle(cx, cy, radius, strokePaint)
