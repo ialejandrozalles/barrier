@@ -33,6 +33,7 @@ class BarrierProtocolClient(
     @Volatile
     private var currentSequence = 0
 
+
     data class ClientInfo(
         val x: Int,
         val y: Int,
@@ -60,7 +61,7 @@ class BarrierProtocolClient(
         fun onKeyUp(keyId: Int, modifierMask: Int, keyButton: Int)
         fun onKeyRepeat(keyId: Int, modifierMask: Int, count: Int, keyButton: Int)
 
-        fun onClipboardText(text: String)
+        fun onClipboardData(payload: ClipboardPayload)
 
         fun currentClientInfo(): ClientInfo
     }
@@ -138,7 +139,7 @@ class BarrierProtocolClient(
                             val y = cursor.readInt16()
                             val sequence = cursor.readInt32()
                             val mask = cursor.readInt16() and 0xFFFF
-                            currentSequence = sequence
+                            currentSequence = max(currentSequence, sequence)
                             listener.onEnter(x, y, sequence, mask)
                         }
 
@@ -148,7 +149,8 @@ class BarrierProtocolClient(
 
                         ProtocolConstants.MSG_C_CLIPBOARD -> {
                             cursor.readUInt8()
-                            cursor.readInt32()
+                            val sequence = cursor.readInt32()
+                            currentSequence = max(currentSequence, sequence)
                         }
 
                         ProtocolConstants.MSG_D_MOUSE_MOVE -> {
@@ -257,13 +259,13 @@ class BarrierProtocolClient(
         }
     }
 
-    fun sendClipboardText(text: String) {
+    fun sendClipboard(payload: ClipboardPayload) {
         if (!connected) {
             return
         }
 
         val writer = activeWriter ?: return
-        val clipboardData = ClipboardCodec.encodeText(text)
+        val clipboardData = ClipboardCodec.encode(payload)
         if (clipboardData.isEmpty()) {
             return
         }
@@ -406,10 +408,12 @@ class BarrierProtocolClient(
         val mark = cursor.readUInt8()
         val chunkData = cursor.readLengthPrefixedBytes()
 
+        currentSequence = max(currentSequence, sequence)
+
         val assembled = clipboardAssembler.consume(clipboardId, sequence, mark, chunkData)
         if (assembled != null) {
-            val text = ClipboardCodec.decodeText(assembled) ?: return
-            listener.onClipboardText(text)
+            val payload = ClipboardCodec.decode(assembled) ?: return
+            listener.onClipboardData(payload)
         }
     }
 

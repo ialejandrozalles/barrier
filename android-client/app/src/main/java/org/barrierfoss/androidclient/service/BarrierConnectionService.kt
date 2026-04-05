@@ -23,6 +23,7 @@ import org.barrierfoss.androidclient.clipboard.ClipboardSyncController
 import org.barrierfoss.androidclient.data.ConnectionConfig
 import org.barrierfoss.androidclient.data.SettingsRepository
 import org.barrierfoss.androidclient.protocol.BarrierProtocolClient
+import org.barrierfoss.androidclient.protocol.ClipboardPayload
 import org.barrierfoss.androidclient.usb.UsbTransport
 import java.io.IOException
 import java.net.ConnectException
@@ -49,8 +50,8 @@ class BarrierConnectionService : Service() {
     override fun onCreate() {
         super.onCreate()
         settingsRepository = SettingsRepository(this)
-        clipboardSync = ClipboardSyncController(this, scope) { text ->
-            activeProtocol?.sendClipboardText(text)
+        clipboardSync = ClipboardSyncController(this, scope) { payload ->
+            activeProtocol?.sendClipboard(payload)
         }.also { it.start() }
         createNotificationChannel()
     }
@@ -181,8 +182,8 @@ class BarrierConnectionService : Service() {
                                     ?.onKeyRepeat(keyId, modifierMask, count, keyButton)
                             }
 
-                            override fun onClipboardText(text: String) {
-                                clipboardSync?.setRemoteClipboardText(text)
+                            override fun onClipboardData(payload: ClipboardPayload) {
+                                clipboardSync?.setRemoteClipboard(payload)
                             }
 
                             override fun currentClientInfo(): BarrierProtocolClient.ClientInfo {
