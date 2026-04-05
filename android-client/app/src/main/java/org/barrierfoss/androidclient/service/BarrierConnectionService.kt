@@ -182,6 +182,7 @@ class BarrierConnectionService : Service() {
                             }
                         },
                         shouldContinue = { running && isActive },
+                        connectTimeoutMs = target.connectTimeoutMs,
                     )
 
                     try {
@@ -259,22 +260,27 @@ class BarrierConnectionService : Service() {
 
     private fun buildConnectionTargets(config: ConnectionConfig): List<ConnectionTarget> {
         val targets = ArrayList<ConnectionTarget>(2)
-        val usbConnected = UsbTransport.isUsbConnected(this)
         val normalizedHost = config.serverHost.trim()
 
-        if (usbConnected) {
-            targets += ConnectionTarget(
-                config = config.copy(serverHost = UsbTransport.USB_HOST),
-                label = "USB",
-            )
+        val usbTarget = ConnectionTarget(
+            config = config.copy(serverHost = UsbTransport.USB_HOST),
+            label = "USB",
+            connectTimeoutMs = USB_CONNECT_TIMEOUT_MS,
+        )
+
+        if (normalizedHost == UsbTransport.USB_HOST) {
+            targets += usbTarget
+            return targets
         }
 
-        if (!usbConnected || normalizedHost != UsbTransport.USB_HOST) {
-            targets += ConnectionTarget(
-                config = config,
-                label = "LAN",
-            )
-        }
+        // Try USB first with a short timeout; fall back to LAN if it fails.
+        targets += usbTarget
+
+        targets += ConnectionTarget(
+            config = config,
+            label = "LAN",
+            connectTimeoutMs = LAN_CONNECT_TIMEOUT_MS,
+        )
 
         return targets
     }
@@ -286,6 +292,7 @@ class BarrierConnectionService : Service() {
     private data class ConnectionTarget(
         val config: ConnectionConfig,
         val label: String,
+        val connectTimeoutMs: Int,
     )
 
     companion object {
@@ -295,5 +302,7 @@ class BarrierConnectionService : Service() {
         private const val CHANNEL_ID = "barrier_android_client"
         private const val NOTIFICATION_ID = 11011
         private const val RETRY_DELAY_MS = 2000L
+        private const val USB_CONNECT_TIMEOUT_MS = 1000
+        private const val LAN_CONNECT_TIMEOUT_MS = 5000
     }
 }

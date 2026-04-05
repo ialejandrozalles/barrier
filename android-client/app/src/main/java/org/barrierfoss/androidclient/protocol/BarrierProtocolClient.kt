@@ -15,6 +15,8 @@ class BarrierProtocolClient(
     private val config: ConnectionConfig,
     private val listener: Listener,
     private val shouldContinue: () -> Boolean,
+    private val connectTimeoutMs: Int = CONNECT_TIMEOUT_MS,
+    private val readTimeoutMs: Int = READ_TIMEOUT_MS,
 ) {
     data class ClientInfo(
         val x: Int,
@@ -55,10 +57,10 @@ class BarrierProtocolClient(
             Socket().use { socket ->
                 socket.tcpNoDelay = true
                 socket.keepAlive = true
-                socket.soTimeout = READ_TIMEOUT_MS
+                socket.soTimeout = readTimeoutMs
                 socket.connect(
                     InetSocketAddress(config.serverHost, config.serverPort),
-                    CONNECT_TIMEOUT_MS,
+                    connectTimeoutMs,
                 )
 
                 val reader = PacketReader(socket.getInputStream())
