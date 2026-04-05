@@ -1,11 +1,14 @@
 package org.barrierfoss.androidclient.protocol
 
 import org.barrierfoss.androidclient.data.ConnectionConfig
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.net.SocketTimeoutException
+import java.nio.charset.StandardCharsets
 import kotlin.math.max
+import kotlin.math.min
 
 /*
  * Módulo Android desarrollado por Izai Alejandro Zalles Merino (zallesrene@gmail.com)
@@ -18,6 +21,18 @@ class BarrierProtocolClient(
     private val connectTimeoutMs: Int = CONNECT_TIMEOUT_MS,
     private val readTimeoutMs: Int = READ_TIMEOUT_MS,
 ) {
+    private val writeLock = Any()
+    private val clipboardAssembler = ClipboardAssembler()
+
+    @Volatile
+    private var activeWriter: PacketWriter? = null
+
+    @Volatile
+    private var connected = false
+
+    @Volatile
+    private var currentSequence = 0
+
     data class ClientInfo(
         val x: Int,
         val y: Int,
@@ -45,6 +60,8 @@ class BarrierProtocolClient(
         fun onKeyUp(keyId: Int, modifierMask: Int, keyButton: Int)
         fun onKeyRepeat(keyId: Int, modifierMask: Int, count: Int, keyButton: Int)
 
+        fun onClipboardText(text: String)
+
         fun currentClientInfo(): ClientInfo
     }
 
@@ -65,6 +82,7 @@ class BarrierProtocolClient(
 
                 val reader = PacketReader(socket.getInputStream())
                 val writer = PacketWriter(socket.getOutputStream())
+                activeWriter = writer
 
                 val hello = readNextPacket(reader)
                 processHello(hello)
@@ -98,6 +116,7 @@ class BarrierProtocolClient(
                             parseOptionPairs(cursor)
                             if (!handshakeComplete) {
                                 handshakeComplete = true
+                                connected = true
                                 listener.onConnected()
                             }
                         }
@@ -119,11 +138,17 @@ class BarrierProtocolClient(
                             val y = cursor.readInt16()
                             val sequence = cursor.readInt32()
                             val mask = cursor.readInt16() and 0xFFFF
+                            currentSequence = sequence
                             listener.onEnter(x, y, sequence, mask)
                         }
 
                         ProtocolConstants.MSG_C_LEAVE -> {
                             listener.onLeave()
+                        }
+
+                        ProtocolConstants.MSG_C_CLIPBOARD -> {
+                            cursor.readUInt8()
+                            cursor.readInt32()
                         }
 
                         ProtocolConstants.MSG_D_MOUSE_MOVE -> {
@@ -183,9 +208,11 @@ class BarrierProtocolClient(
                             listener.onKeyRepeat(keyId, mask, count, keyButton)
                         }
 
+                        ProtocolConstants.MSG_D_CLIPBOARD -> {
+                            handleClipboardChunk(cursor)
+                        }
+
                         ProtocolConstants.MSG_C_SCREEN_SAVER,
-                        ProtocolConstants.MSG_C_CLIPBOARD,
-                        ProtocolConstants.MSG_D_CLIPBOARD,
                         ProtocolConstants.MSG_D_FILE_TRANSFER,
                         ProtocolConstants.MSG_D_DRAG_INFO -> {
                             // Accepted but intentionally ignored for Android input-only client.
@@ -224,7 +251,29 @@ class BarrierProtocolClient(
             disconnectReason = e.message ?: "I/O error"
             throw e
         } finally {
+            connected = false
+            activeWriter = null
             listener.onDisconnected(disconnectReason)
+        }
+    }
+
+    fun sendClipboardText(text: String) {
+        if (!connected) {
+            return
+        }
+
+        val writer = activeWriter ?: return
+        val clipboardData = ClipboardCodec.encodeText(text)
+        if (clipboardData.isEmpty()) {
+            return
+        }
+
+        val sequence = currentSequence
+        try {
+            sendClipboardGrab(writer, CLIPBOARD_ID, sequence)
+            sendClipboardChunks(writer, CLIPBOARD_ID, sequence, clipboardData)
+        } catch (_: IOException) {
+            // Ignore clipboard send failures; connection loop will handle disconnects.
         }
     }
 
@@ -264,12 +313,12 @@ class BarrierProtocolClient(
             .writeLengthPrefixedString(config.screenName)
             .toByteArray()
 
-        writer.writePacket(payload)
+        writePacket(writer, payload)
     }
 
     @Throws(IOException::class)
     private fun sendKeepAlive(writer: PacketWriter) {
-        writer.writePacket(PacketBuilder().writeAscii(ProtocolConstants.MSG_C_KEEP_ALIVE).toByteArray())
+        writePacket(writer, PacketBuilder().writeAscii(ProtocolConstants.MSG_C_KEEP_ALIVE).toByteArray())
     }
 
     @Throws(IOException::class)
@@ -285,7 +334,152 @@ class BarrierProtocolClient(
             .writeInt16(info.cursorY)
             .toByteArray()
 
-        writer.writePacket(payload)
+        writePacket(writer, payload)
+    }
+
+    @Throws(IOException::class)
+    private fun writePacket(writer: PacketWriter, payload: ByteArray) {
+        synchronized(writeLock) {
+            writer.writePacket(payload)
+        }
+    }
+
+    @Throws(IOException::class)
+    private fun sendClipboardGrab(writer: PacketWriter, clipboardId: Int, sequence: Int) {
+        val payload = PacketBuilder()
+            .writeAscii(ProtocolConstants.MSG_C_CLIPBOARD)
+            .writeInt8(clipboardId)
+            .writeInt32(sequence)
+            .toByteArray()
+
+        writePacket(writer, payload)
+    }
+
+    @Throws(IOException::class)
+    private fun sendClipboardChunks(
+        writer: PacketWriter,
+        clipboardId: Int,
+        sequence: Int,
+        data: ByteArray,
+    ) {
+        val sizeBytes = data.size.toString().toByteArray(StandardCharsets.US_ASCII)
+        sendClipboardChunk(writer, clipboardId, sequence, DATA_START, sizeBytes)
+
+        var offset = 0
+        while (offset < data.size) {
+            val end = min(offset + CLIPBOARD_CHUNK_SIZE, data.size)
+            sendClipboardChunk(
+                writer,
+                clipboardId,
+                sequence,
+                DATA_CHUNK,
+                data.copyOfRange(offset, end),
+            )
+            offset = end
+        }
+
+        sendClipboardChunk(writer, clipboardId, sequence, DATA_END, ByteArray(0))
+    }
+
+    @Throws(IOException::class)
+    private fun sendClipboardChunk(
+        writer: PacketWriter,
+        clipboardId: Int,
+        sequence: Int,
+        mark: Int,
+        chunkData: ByteArray,
+    ) {
+        val payload = PacketBuilder()
+            .writeAscii(ProtocolConstants.MSG_D_CLIPBOARD)
+            .writeInt8(clipboardId)
+            .writeInt32(sequence)
+            .writeInt8(mark)
+            .writeLengthPrefixedBytes(chunkData)
+            .toByteArray()
+
+        writePacket(writer, payload)
+    }
+
+    private fun handleClipboardChunk(cursor: BufferCursor) {
+        val clipboardId = cursor.readUInt8()
+        val sequence = cursor.readInt32()
+        val mark = cursor.readUInt8()
+        val chunkData = cursor.readLengthPrefixedBytes()
+
+        val assembled = clipboardAssembler.consume(clipboardId, sequence, mark, chunkData)
+        if (assembled != null) {
+            val text = ClipboardCodec.decodeText(assembled) ?: return
+            listener.onClipboardText(text)
+        }
+    }
+
+    private class ClipboardAssembler {
+        private var expectedSize = -1
+        private var activeId = -1
+        private var activeSequence = -1
+        private val buffer = ByteArrayOutputStream()
+
+        fun consume(id: Int, sequence: Int, mark: Int, data: ByteArray): ByteArray? {
+            return when (mark) {
+                DATA_START -> {
+                    val size = parseExpectedSize(data) ?: return reset()
+                    expectedSize = size
+                    activeId = id
+                    activeSequence = sequence
+                    buffer.reset()
+                    null
+                }
+
+                DATA_CHUNK -> {
+                    if (!matches(id, sequence) || expectedSize < 0) {
+                        return reset()
+                    }
+                    if (buffer.size() + data.size > expectedSize) {
+                        return reset()
+                    }
+                    buffer.write(data)
+                    null
+                }
+
+                DATA_END -> {
+                    if (!matches(id, sequence) || expectedSize < 0) {
+                        return reset()
+                    }
+                    if (buffer.size() != expectedSize) {
+                        return reset()
+                    }
+                    val complete = buffer.toByteArray()
+                    reset()
+                    complete
+                }
+
+                else -> reset()
+            }
+        }
+
+        private fun matches(id: Int, sequence: Int): Boolean {
+            if (activeId == -1 && activeSequence == -1) {
+                return true
+            }
+            return activeId == id && activeSequence == sequence
+        }
+
+        private fun parseExpectedSize(data: ByteArray): Int? {
+            val sizeText = String(data, StandardCharsets.US_ASCII).trim()
+            val size = sizeText.toLongOrNull() ?: return null
+            if (size < 0 || size > MAX_CLIPBOARD_BYTES) {
+                return null
+            }
+            return size.toInt()
+        }
+
+        private fun reset(): ByteArray? {
+            expectedSize = -1
+            activeId = -1
+            activeSequence = -1
+            buffer.reset()
+            return null
+        }
     }
 
     @Throws(IOException::class)
@@ -321,5 +515,11 @@ class BarrierProtocolClient(
     private companion object {
         const val CONNECT_TIMEOUT_MS = 5000
         const val READ_TIMEOUT_MS = 2000
+        const val CLIPBOARD_ID = 0
+        const val CLIPBOARD_CHUNK_SIZE = 32 * 1024
+        const val MAX_CLIPBOARD_BYTES = 4 * 1024 * 1024
+        const val DATA_START = 1
+        const val DATA_CHUNK = 2
+        const val DATA_END = 3
     }
 }

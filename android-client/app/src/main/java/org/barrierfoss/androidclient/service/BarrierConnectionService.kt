@@ -19,6 +19,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.barrierfoss.androidclient.MainActivity
 import org.barrierfoss.androidclient.R
+import org.barrierfoss.androidclient.clipboard.ClipboardSyncController
 import org.barrierfoss.androidclient.data.ConnectionConfig
 import org.barrierfoss.androidclient.data.SettingsRepository
 import org.barrierfoss.androidclient.protocol.BarrierProtocolClient
@@ -37,12 +38,20 @@ class BarrierConnectionService : Service() {
     private lateinit var settingsRepository: SettingsRepository
     private var workerJob: Job? = null
 
+    private var clipboardSync: ClipboardSyncController? = null
+
+    @Volatile
+    private var activeProtocol: BarrierProtocolClient? = null
+
     @Volatile
     private var running = false
 
     override fun onCreate() {
         super.onCreate()
         settingsRepository = SettingsRepository(this)
+        clipboardSync = ClipboardSyncController(this, scope) { text ->
+            activeProtocol?.sendClipboardText(text)
+        }.also { it.start() }
         createNotificationChannel()
     }
 
@@ -60,6 +69,9 @@ class BarrierConnectionService : Service() {
         running = false
         workerJob?.cancel()
         workerJob = null
+        clipboardSync?.stop()
+        clipboardSync = null
+        activeProtocol = null
         scope.cancel()
         super.onDestroy()
     }
@@ -169,6 +181,10 @@ class BarrierConnectionService : Service() {
                                     ?.onKeyRepeat(keyId, modifierMask, count, keyButton)
                             }
 
+                            override fun onClipboardText(text: String) {
+                                clipboardSync?.setRemoteClipboardText(text)
+                            }
+
                             override fun currentClientInfo(): BarrierProtocolClient.ClientInfo {
                                 return BarrierAccessibilityService.instance()?.currentClientInfo()
                                     ?: BarrierProtocolClient.ClientInfo(
@@ -186,6 +202,7 @@ class BarrierConnectionService : Service() {
                     )
 
                     try {
+                        activeProtocol = protocol
                         protocol.runSession()
                         break
                     } catch (e: IOException) {
@@ -195,6 +212,10 @@ class BarrierConnectionService : Service() {
                         }
                     } catch (e: Exception) {
                         updateNotification("Error inesperado: ${e.message}")
+                    } finally {
+                        if (activeProtocol === protocol) {
+                            activeProtocol = null
+                        }
                     }
 
                     break

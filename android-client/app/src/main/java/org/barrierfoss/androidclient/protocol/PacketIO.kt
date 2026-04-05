@@ -96,6 +96,18 @@ class BufferCursor(private val data: ByteArray) {
     }
 
     @Throws(IOException::class)
+    fun readLengthPrefixedBytes(): ByteArray {
+        val length = readInt32()
+        if (length < 0 || length > ProtocolConstants.MAX_PACKET_SIZE) {
+            throw IOException("Invalid bytes length: $length")
+        }
+        requireAvailable(length)
+        val value = data.copyOfRange(offset, offset + length)
+        offset += length
+        return value
+    }
+
+    @Throws(IOException::class)
     private fun requireAvailable(required: Int) {
         if (required > remaining()) {
             throw IOException("Packet underflow. Required=$required remaining=${remaining()}")
@@ -134,6 +146,17 @@ class PacketBuilder {
         val bytes = value.toByteArray(StandardCharsets.UTF_8)
         writeInt32(bytes.size)
         stream.write(bytes)
+        return this
+    }
+
+    fun writeBytes(value: ByteArray): PacketBuilder {
+        stream.write(value)
+        return this
+    }
+
+    fun writeLengthPrefixedBytes(value: ByteArray): PacketBuilder {
+        writeInt32(value.size)
+        stream.write(value)
         return this
     }
 
