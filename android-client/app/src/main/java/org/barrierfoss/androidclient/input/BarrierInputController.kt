@@ -4,6 +4,8 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.util.DisplayMetrics
 import android.view.WindowManager
@@ -14,6 +16,8 @@ import kotlin.math.max
 class BarrierInputController(private val service: AccessibilityService) {
     private val textInjector = TextInjector(service)
     private val cursorOverlay = CursorOverlay(service)
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val wheelDispatchRunnable = Runnable { flushPendingWheel() }
 
     private var width = 1
     private var height = 1
@@ -31,6 +35,10 @@ class BarrierInputController(private val service: AccessibilityService) {
     private var lastDragX = 0f
     private var lastDragY = 0f
     private var lastDragDispatch = 0L
+    private var activeDragStroke: GestureDescription.StrokeDescription? = null
+
+    private var pendingWheelDelta = 0
+    private var wheelDispatchScheduled = false
 
     init {
         refreshDisplayInfo()
@@ -39,6 +47,7 @@ class BarrierInputController(private val service: AccessibilityService) {
     }
 
     fun release() {
+        clearPendingWheel()
         cursorOverlay.release()
     }
 
@@ -63,6 +72,8 @@ class BarrierInputController(private val service: AccessibilityService) {
         entered = false
         leftButtonDown = false
         dragActive = false
+        activeDragStroke = null
+        clearPendingWheel()
         cursorOverlay.hide()
     }
 
@@ -110,6 +121,7 @@ class BarrierInputController(private val service: AccessibilityService) {
                 lastDragX = cursorX
                 lastDragY = cursorY
                 dragActive = false
+                activeDragStroke = null
             }
 
             3 -> dispatchTap(cursorX, cursorY, LONG_PRESS_MS)
@@ -130,12 +142,15 @@ class BarrierInputController(private val service: AccessibilityService) {
             .coerceAtLeast(TAP_DURATION_MS)
             .coerceAtMost(MAX_GESTURE_MS)
 
-        if (!dragActive) {
+        if (dragActive) {
+            finishDrag()
+        } else {
             dispatchTap(cursorX, cursorY, duration)
         }
 
         leftButtonDown = false
         dragActive = false
+        activeDragStroke = null
     }
 
     @Suppress("UNUSED_PARAMETER")
@@ -144,9 +159,10 @@ class BarrierInputController(private val service: AccessibilityService) {
             return
         }
 
-        val ticks = max(1, abs(yDelta) / 120).coerceAtMost(8)
-        repeat(ticks) {
-            dispatchScrollStep(if (yDelta > 0) 1 else -1)
+        pendingWheelDelta += yDelta
+        if (!wheelDispatchScheduled) {
+            wheelDispatchScheduled = true
+            mainHandler.postDelayed(wheelDispatchRunnable, WHEEL_MERGE_WINDOW_MS)
         }
     }
 
@@ -245,10 +261,38 @@ class BarrierInputController(private val service: AccessibilityService) {
             return
         }
 
-        dispatchDrag(lastDragX, lastDragY, cursorX, cursorY)
+        activeDragStroke = dispatchDragStroke(
+            fromX = lastDragX,
+            fromY = lastDragY,
+            toX = cursorX,
+            toY = cursorY,
+            previousStroke = activeDragStroke,
+            willContinue = true,
+        )
         lastDragX = cursorX
         lastDragY = cursorY
         lastDragDispatch = now
+    }
+
+    private fun finishDrag() {
+        if (!dragActive) {
+            activeDragStroke = null
+            return
+        }
+
+        val fromX = if (activeDragStroke == null) pressStartX else lastDragX
+        val fromY = if (activeDragStroke == null) pressStartY else lastDragY
+
+        dispatchDragStroke(
+            fromX = fromX,
+            fromY = fromY,
+            toX = cursorX,
+            toY = cursorY,
+            previousStroke = activeDragStroke,
+            willContinue = false,
+        )
+
+        activeDragStroke = null
     }
 
     private fun dispatchTap(x: Float, y: Float, durationMs: Long) {
@@ -264,18 +308,40 @@ class BarrierInputController(private val service: AccessibilityService) {
         service.dispatchGesture(gesture, null, null)
     }
 
-    private fun dispatchDrag(fromX: Float, fromY: Float, toX: Float, toY: Float) {
+    private fun dispatchDragStroke(
+        fromX: Float,
+        fromY: Float,
+        toX: Float,
+        toY: Float,
+        previousStroke: GestureDescription.StrokeDescription?,
+        willContinue: Boolean,
+    ): GestureDescription.StrokeDescription {
         val path = Path().apply {
             moveTo(fromX, fromY)
             lineTo(toX, toY)
         }
-        val stroke = GestureDescription.StrokeDescription(path, 0, DRAG_GESTURE_MS)
+
+        val stroke = if (previousStroke == null) {
+            GestureDescription.StrokeDescription(path, 0, DRAG_GESTURE_MS, willContinue)
+        } else {
+            previousStroke.continueStroke(path, 0, DRAG_GESTURE_MS, willContinue)
+        }
+
         val gesture = GestureDescription.Builder().addStroke(stroke).build()
         service.dispatchGesture(gesture, null, null)
+        return stroke
     }
 
     private fun dispatchScrollStep(direction: Int) {
-        val distance = (height * 0.10f).coerceIn(70f, 240f)
+        dispatchScroll(direction, 1)
+    }
+
+    private fun dispatchScroll(direction: Int, ticks: Int) {
+        val safeTicks = ticks.coerceAtLeast(1)
+        val baseDistance = (height * 0.10f).coerceIn(70f, 240f)
+        val distance = (baseDistance * safeTicks).coerceAtMost(height * 0.80f)
+        val duration = (SCROLL_GESTURE_MS * safeTicks.toLong())
+            .coerceIn(SCROLL_GESTURE_MS, MAX_SCROLL_GESTURE_MS)
         val startX = cursorX
         val startY: Float
         val endY: Float
@@ -293,18 +359,41 @@ class BarrierInputController(private val service: AccessibilityService) {
             lineTo(startX, endY)
         }
 
-        val stroke = GestureDescription.StrokeDescription(path, 0, SCROLL_GESTURE_MS)
+        val stroke = GestureDescription.StrokeDescription(path, 0, duration)
         val gesture = GestureDescription.Builder().addStroke(stroke).build()
         service.dispatchGesture(gesture, null, null)
+    }
+
+    private fun flushPendingWheel() {
+        val delta = pendingWheelDelta
+        pendingWheelDelta = 0
+        wheelDispatchScheduled = false
+
+        if (!entered || delta == 0) {
+            return
+        }
+
+        val ticks = max(1, abs(delta) / 120).coerceAtMost(MAX_SCROLL_TICKS)
+        val direction = if (delta > 0) 1 else -1
+        dispatchScroll(direction, ticks)
+    }
+
+    private fun clearPendingWheel() {
+        pendingWheelDelta = 0
+        wheelDispatchScheduled = false
+        mainHandler.removeCallbacks(wheelDispatchRunnable)
     }
 
     private companion object {
         const val TAP_DURATION_MS = 45L
         const val LONG_PRESS_MS = 550L
         const val MAX_GESTURE_MS = 1500L
-        const val DRAG_GESTURE_MS = 12L
+        const val DRAG_GESTURE_MS = 40L
         const val SCROLL_GESTURE_MS = 90L
-        const val DRAG_MIN_INTERVAL_MS = 8L
+        const val MAX_SCROLL_GESTURE_MS = 600L
+        const val DRAG_MIN_INTERVAL_MS = 16L
         const val DRAG_THRESHOLD_PX = 8f
+        const val WHEEL_MERGE_WINDOW_MS = 16L
+        const val MAX_SCROLL_TICKS = 8
     }
 }
