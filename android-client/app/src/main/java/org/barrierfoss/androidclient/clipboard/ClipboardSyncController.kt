@@ -75,12 +75,13 @@ class ClipboardSyncController(
 
         val description = clip.description
         val item = clip.getItemAt(0)
-        val htmlText = if (hasHtml) {
+        val hasHtmlMime = description.hasMimeType(ClipDescription.MIMETYPE_TEXT_HTML)
+        val htmlText = if (hasHtmlMime || item.htmlText != null) {
             item.coerceToHtmlText(appContext)?.toString() ?: item.htmlText
         } else {
-            item.htmlText
+            null
         }
-        val hasHtml = htmlText != null || description.hasMimeType(ClipDescription.MIMETYPE_TEXT_HTML)
+        val hasHtml = htmlText != null || hasHtmlMime
         val hasText = description.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) || hasHtml
 
         val rawText = if (hasText) item.coerceToText(appContext)?.toString() else null

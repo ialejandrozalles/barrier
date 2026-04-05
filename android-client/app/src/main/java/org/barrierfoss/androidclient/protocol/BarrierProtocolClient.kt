@@ -144,6 +144,9 @@ class BarrierProtocolClient(
                         }
 
                         ProtocolConstants.MSG_C_LEAVE -> {
+                            if (currentSequence >= 0) {
+                                currentSequence = currentSequence + 1
+                            }
                             listener.onLeave()
                         }
 
